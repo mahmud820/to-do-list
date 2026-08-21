@@ -1,0 +1,14 @@
+.agenda-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  max-height: 200px; /* tinggi maksimal kotak */
+  overflow-y: auto; /* aktifkan scroll vertikal */
+  padding-right: 5px;
+}
+
+@media (min-width: 768px) {
+  .agenda-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

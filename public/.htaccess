@@ -1,0 +1,27 @@
+# ===========================
+# BASIC SECURITY OPTIONS
+# ===========================
+Options -Indexes
+Options -Multiviews
+
+# ===========================
+# ENABLE REWRITE
+# ===========================
+RewriteEngine On
+RewriteBase /
+
+# ===========================
+# AVOID REDIRECTING STATIC FILES
+# ===========================
+RewriteCond %{REQUEST_URI} !^/js/
+RewriteCond %{REQUEST_URI} !^/css/
+RewriteCond %{REQUEST_URI} !^/img/
+RewriteCond %{REQUEST_URI} !^/fonts/
+RewriteCond %{REQUEST_URI} !^/vendor/
+
+# ===========================
+# ROUTING FOR MVC
+# ===========================
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ index.php?url=$1 [L,QSA]
