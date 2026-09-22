@@ -1,169 +1,149 @@
-// 🟢 TAMBAH AGENDA
-$('#addAgendaForm').on('submit', function (e) {
+/* Halaman Agenda: CRUD agenda + checklist item (AJAX) */
+(function () {
+  "use strict";
+
+  var modal = document.getElementById("agendaModal");
+  if (!modal) return;
+
+  var form = document.getElementById("agendaForm");
+  var el = function (id) {
+    return document.getElementById(id);
+  };
+  var builder = el("agendaItemsBuilder");
+  var itemsField = el("agendaItemsField");
+  var editNote = el("agendaEditItemsNote");
+
+  // Baris input checklist pada form tambah agenda
+  function addBuilderRow() {
+    var row = document.createElement("div");
+    row.className = "builder__row";
+
+    var input = document.createElement("input");
+    input.type = "text";
+    input.name = "items[]";
+    input.maxLength = 150;
+    input.placeholder = "Nama item checklist...";
+    input.className = "input input--sm";
+
+    var remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn btn--ghost btn--icon btn--sm btn--danger-hover";
+    remove.setAttribute("aria-label", "Hapus baris");
+    remove.textContent = "\u00d7";
+    remove.addEventListener("click", function () {
+      row.remove();
+    });
+
+    row.appendChild(input);
+    row.appendChild(remove);
+    builder.appendChild(row);
+    return input;
+  }
+
+  function openNew() {
+    form.reset();
+    builder.innerHTML = "";
+    el("agenda_id").value = "";
+    el("agendaModalTitle").textContent = "Tambah Agenda Baru";
+    el("agenda_tanggal").value = App.today();
+    itemsField.hidden = false;
+    editNote.hidden = true;
+    addBuilderRow();
+    App.openModal(modal);
+  }
+
+  function openEdit(a) {
+    form.reset();
+    builder.innerHTML = "";
+    itemsField.hidden = true;
+    editNote.hidden = false;
+    el("agenda_id").value = a.id;
+    el("agendaModalTitle").textContent = "Edit Agenda";
+    el("agenda_judul").value = a.judul || "";
+    el("agenda_deskripsi").value = a.deskripsi || "";
+    el("agenda_tanggal").value = a.tanggal || "";
+    el("agenda_mulai").value = a.waktu_mulai || "";
+    el("agenda_selesai").value = a.waktu_selesai || "";
+    App.openModal(modal);
+  }
+
+  el("agendaItemAdd").addEventListener("click", function () {
+    addBuilderRow().focus();
+  });
+
+  form.addEventListener("submit", function (e) {
     e.preventDefault();
+    var isEdit = el("agenda_id").value !== "";
+    App.submitForm(form, BASEURL + (isEdit ? "/agenda/update" : "/agenda/add"));
+  });
 
-    $.ajax({
-        url: BASEURL + '/agenda/add',
-        type: 'POST',
-        data: $(this).serialize(),
-        dataType: 'json',
-        success: function (response) {
-            console.log('AJAX add agenda response:', response);
-            if (response && response.status === 'success') {
-                Swal.fire({ title: 'Berhasil!', text: response.message, icon: 'success', timer: 1500, showConfirmButton: false });
-                $('#addAgendaModal').modal('hide');
-                $('#addAgendaForm')[0].reset();
-                setTimeout(() => location.reload(), 800);
-            } else {
-                Swal.fire('Gagal!', response.message || 'Terjadi kesalahan', 'error');
-            }
-        },
-        error: function (xhr, status, error) {
-            console.error('AJAX error:', xhr.responseText);
-            Swal.fire('Error!', 'Terjadi kesalahan server: ' + error, 'error');
-        }
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-agenda-new]")) {
+      openNew();
+      return;
+    }
+
+    var edit = e.target.closest("[data-agenda-edit]");
+    if (edit) {
+      openEdit(JSON.parse(edit.getAttribute("data-agenda-edit")));
+      return;
+    }
+
+    var del = e.target.closest("[data-agenda-delete]");
+    if (del) {
+      var id = del.getAttribute("data-agenda-delete");
+      App.confirm(
+        "Yakin ingin menghapus?",
+        "Agenda akan dihapus beserta seluruh itemnya!",
+      ).then(function (ok) {
+        if (ok)
+          App.post(BASEURL + "/agenda/delete", { id: id }).then(App.handle);
+      });
+      return;
+    }
+
+    var delItem = e.target.closest("[data-delete-item]");
+    if (delItem) {
+      var itemId = delItem.getAttribute("data-delete-item");
+      App.confirm(
+        "Hapus item ini?",
+        "Item checklist akan dihapus permanen.",
+      ).then(function (ok) {
+        if (ok)
+          App.post(BASEURL + "/agenda/deleteItem", { id: itemId }).then(
+            function (r) {
+              App.handle(r, { silent: true });
+            },
+          );
+      });
+    }
+  });
+
+  // Centang / batal centang item checklist
+  document.addEventListener("change", function (e) {
+    var box = e.target.closest("[data-toggle-item]");
+    if (!box) return;
+    App.post(BASEURL + "/agenda/toggleItem", {
+      id: box.getAttribute("data-toggle-item"),
+    }).then(function (r) {
+      if (!App.handle(r, { silent: true })) box.checked = !box.checked;
     });
-});
+  });
 
-// 🟡 EDIT AGENDA
-$(document).on('click', '.btn-edit-agenda', function () {
-    $('#edit_id').val($(this).data('id'));
-    $('#edit_judul').val($(this).data('judul'));
-    $('#edit_tanggal').val($(this).data('tanggal'));
-    $('#editAgendaModal').modal('show');
-});
-
-$('#editAgendaForm').on('submit', function (e) {
+  // Tambah item checklist langsung dari kartu agenda
+  document.addEventListener("submit", function (e) {
+    var f = e.target.closest("[data-add-item]");
+    if (!f) return;
     e.preventDefault();
-
-    $.ajax({
-        url: BASEURL + '/agenda/update',
-        type: 'POST',
-        data: $(this).serialize(),
-        dataType: 'json',
-        success: function (response) {
-            console.log('AJAX update agenda response:', response);
-            if (response && response.status === 'success') {
-                Swal.fire({ title: 'Berhasil!', text: response.message, icon: 'success', timer: 1500, showConfirmButton: false });
-                $('#editAgendaModal').modal('hide');
-                setTimeout(() => location.reload(), 800);
-            } else {
-                Swal.fire('Gagal!', response.message || 'Terjadi kesalahan', 'error');
-            }
-        },
-        error: function (xhr, status, error) {
-            console.error('AJAX error:', xhr.responseText);
-            Swal.fire('Error!', 'Terjadi kesalahan server: ' + error, 'error');
-        }
+    var btn = f.querySelector('[type="submit"]');
+    if (btn) btn.disabled = true;
+    App.post(BASEURL + "/agenda/addItem", {
+      agenda_id: f.getAttribute("data-add-item"),
+      nama_item: f.elements["nama_item"].value,
+    }).then(function (r) {
+      if (!App.handle(r, { silent: true }) && btn) btn.disabled = false;
     });
-});
+  });
 
-// 🔴 HAPUS AGENDA
-$(document).on('click', '.btn-delete-agenda', function () {
-    const id = $(this).data('id');
-
-    Swal.fire({ title: 'Yakin ingin menghapus?', text: 'Agenda akan dihapus beserta itemnya!', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, hapus', cancelButtonText: 'Batal' })
-    .then((result) => {
-        if (result.isConfirmed) {
-            $.ajax({
-                url: BASEURL + '/agenda/delete',
-                type: 'POST',
-                data: { id: id },
-                dataType: 'json',
-                success: function (response) {
-                    console.log('AJAX delete agenda response:', response);
-                    if (response && response.status === 'success') {
-                        Swal.fire({ title: 'Terhapus!', text: response.message, icon: 'success', timer: 1200, showConfirmButton: false });
-                        setTimeout(() => location.reload(), 800);
-                    } else {
-                        Swal.fire('Gagal!', response.message || 'Terjadi kesalahan', 'error');
-                    }
-                },
-                error: function (xhr, status, error) {
-                    console.error('AJAX error:', xhr.responseText);
-                    Swal.fire('Error!', 'Terjadi kesalahan server: ' + error, 'error');
-                }
-            });
-        }
-    });
-});
-
-// ➕ TAMBAH ITEM
-$(document).on('submit', '.add-item-form', function (e) {
-    e.preventDefault();
-    const $form = $(this);
-    const agendaId = $form.data('agenda-id');
-    const nama_item = $form.find('input[name="nama_item"]').val();
-
-    $.ajax({
-        url: BASEURL + '/agenda/addItem',
-        type: 'POST',
-        data: { agenda_id: agendaId, nama_item: nama_item },
-        dataType: 'json',
-        success: function (response) {
-            console.log('AJAX add item response:', response);
-            if (response && response.status === 'success') {
-                $form[0].reset();
-                setTimeout(() => location.reload(), 600);
-            } else {
-                Swal.fire('Gagal!', response.message || 'Terjadi kesalahan', 'error');
-            }
-        },
-        error: function (xhr, status, error) {
-            console.error('AJAX error:', xhr.responseText);
-            Swal.fire('Error!', 'Terjadi kesalahan server: ' + error, 'error');
-        }
-    });
-});
-
-// Toggle status item
-$(document).on('change', '.toggle-item', function () {
-    const id = $(this).data('id');
-    $.ajax({
-        url: BASEURL + '/agenda/toggleItem',
-        type: 'POST',
-        data: { id: id },
-        dataType: 'json',
-        success: function (response) {
-            console.log('AJAX toggle item response:', response);
-            if (response && response.status === 'success') {
-                setTimeout(() => location.reload(), 400);
-            } else {
-                Swal.fire('Gagal!', response.message || 'Terjadi kesalahan', 'error');
-            }
-        },
-        error: function (xhr, status, error) {
-            console.error('AJAX error:', xhr.responseText);
-            Swal.fire('Error!', 'Terjadi kesalahan server: ' + error, 'error');
-        }
-    });
-});
-
-// Hapus item
-$(document).on('click', '.btn-delete-item', function () {
-    const id = $(this).data('id');
-
-    Swal.fire({ title: 'Yakin ingin menghapus item?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Ya, hapus', cancelButtonText: 'Batal' })
-    .then((result) => {
-        if (result.isConfirmed) {
-            $.ajax({
-                url: BASEURL + '/agenda/deleteItem',
-                type: 'POST',
-                data: { id: id },
-                dataType: 'json',
-                success: function (response) {
-                    console.log('AJAX delete item response:', response);
-                    if (response && response.status === 'success') {
-                        setTimeout(() => location.reload(), 400);
-                    } else {
-                        Swal.fire('Gagal!', response.message || 'Terjadi kesalahan', 'error');
-                    }
-                },
-                error: function (xhr, status, error) {
-                    console.error('AJAX error:', xhr.responseText);
-                    Swal.fire('Error!', 'Terjadi kesalahan server: ' + error, 'error');
-                }
-            });
-        }
-    });
-});
+  App.openIfNew(openNew);
+})();

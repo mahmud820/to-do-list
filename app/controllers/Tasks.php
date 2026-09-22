@@ -4,10 +4,30 @@ class Tasks extends Controller
 {
     public function index()
     {
-        $data['judul'] = 'Tasks';
         $q = trim($_GET['q'] ?? '');
+        $status = $_GET['status'] ?? '';
+        $prioritas = $_GET['prioritas'] ?? '';
+        $deadline = $_GET['deadline'] ?? '';
+
+        // Hanya terima nilai filter yang valid
+        if (!in_array($status, M_Tasks::STATUS, true)) {
+            $status = '';
+        }
+        if (!in_array($prioritas, M_Tasks::PRIORITAS, true)) {
+            $prioritas = '';
+        }
+        if (!in_array($deadline, M_Tasks::DEADLINE_FILTERS, true)) {
+            $deadline = '';
+        }
+
+        $data['judul'] = 'Tasks';
         $data['q'] = $q;
-        $data['tasks'] = $this->model('M_Tasks')->getAllTasks($q);
+        $data['status'] = $status;
+        $data['prioritas'] = $prioritas;
+        $data['deadline'] = $deadline;
+        $data['today'] = date('Y-m-d');
+        $data['tasks'] = $this->model('M_Tasks')->getAllTasks($q, $status, $prioritas, $deadline);
+
         $this->view('templates/header', $data);
         $this->view('tasks/index', $data);
         $this->view('templates/footer');
@@ -16,75 +36,111 @@ class Tasks extends Controller
     // Tambah task baru via AJAX
     public function add()
     {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            header('Content-Type: application/json; charset=utf-8');
+        $this->requirePost();
+        [$data, $error] = $this->validated();
 
-            $judul = trim($_POST['judul'] ?? '');
-            $deskripsi = trim($_POST['deskripsi'] ?? '');
-            $deadline = trim($_POST['deadline'] ?? '');
-
-            if ($judul === '' || $deskripsi === '' || $deadline === '') {
-                echo json_encode(['status' => 'error', 'message' => 'Semua field wajib diisi!']);
-                exit;
-            }
-
-            $data = ['judul' => $judul, 'deskripsi' => $deskripsi, 'deadline' => $deadline];
-
-            if ($this->model('M_Tasks')->addTask($data)) {
-                echo json_encode(['status' => 'success', 'message' => 'Task berhasil ditambahkan!']);
-            } else {
-                echo json_encode(['status' => 'error', 'message' => 'Gagal menambahkan task.']);
-            }
-            exit;
+        if ($error) {
+            $this->json(['status' => 'error', 'message' => $error]);
         }
+
+        if ($this->model('M_Tasks')->addTask($data)) {
+            $this->json(['status' => 'success', 'message' => 'Task berhasil ditambahkan!']);
+        }
+        $this->json(['status' => 'error', 'message' => 'Gagal menambahkan task.']);
     }
 
     // Update task via AJAX
     public function update()
     {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            header('Content-Type: application/json; charset=utf-8');
+        $this->requirePost();
+        [$data, $error] = $this->validated();
+        $id = (int) $this->post('id');
 
-            $id = $_POST['id'] ?? '';
-            $judul = trim($_POST['judul'] ?? '');
-            $deskripsi = trim($_POST['deskripsi'] ?? '');
-            $deadline = trim($_POST['deadline'] ?? '');
-
-            if (empty($id) || $judul === '' || $deskripsi === '' || $deadline === '') {
-                echo json_encode(['status' => 'error', 'message' => 'Semua field wajib diisi!']);
-                exit;
-            }
-
-            $data = ['id' => $id, 'judul' => $judul, 'deskripsi' => $deskripsi, 'deadline' => $deadline];
-
-            if ($this->model('M_Tasks')->updateTask($data)) {
-                echo json_encode(['status' => 'success', 'message' => 'Task berhasil diupdate!']);
-            } else {
-                echo json_encode(['status' => 'error', 'message' => 'Gagal mengupdate task.']);
-            }
-            exit;
+        if ($id <= 0) {
+            $this->json(['status' => 'error', 'message' => 'ID task tidak ditemukan!']);
         }
+        if ($error) {
+            $this->json(['status' => 'error', 'message' => $error]);
+        }
+
+        $data['id'] = $id;
+
+        if ($this->model('M_Tasks')->updateTask($data)) {
+            $this->json(['status' => 'success', 'message' => 'Task berhasil diupdate!']);
+        }
+        $this->json(['status' => 'error', 'message' => 'Gagal mengupdate task.']);
     }
 
     // Hapus task via AJAX
     public function delete()
     {
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            header('Content-Type: application/json; charset=utf-8');
+        $this->requirePost();
+        $id = (int) $this->post('id');
 
-            $id = $_POST['id'] ?? '';
-
-            if (empty($id)) {
-                echo json_encode(['status' => 'error', 'message' => 'ID task tidak ditemukan!']);
-                exit;
-            }
-
-            if ($this->model('M_Tasks')->deleteTask($id)) {
-                echo json_encode(['status' => 'success', 'message' => 'Task berhasil dihapus!']);
-            } else {
-                echo json_encode(['status' => 'error', 'message' => 'Gagal menghapus task.']);
-            }
-            exit;
+        if ($id <= 0) {
+            $this->json(['status' => 'error', 'message' => 'ID task tidak ditemukan!']);
         }
+
+        if ($this->model('M_Tasks')->deleteTask($id)) {
+            $this->json(['status' => 'success', 'message' => 'Task berhasil dihapus!']);
+        }
+        $this->json(['status' => 'error', 'message' => 'Gagal menghapus task.']);
+    }
+
+    // Validasi & normalisasi input form task. Mengembalikan [data, pesanError]
+    private function validated(): array
+    {
+        $judul = $this->post('judul');
+        $deskripsi = $this->post('deskripsi');
+        $deadline = $this->post('deadline');
+        $status = $this->post('status') ?: 'belum selesai';
+        $prioritas = $this->post('prioritas') ?: 'sedang';
+        $progress = $this->post('progress');
+
+        if ($judul === '') {
+            return [[], 'Judul task wajib diisi!'];
+        }
+        if (mb_strlen($judul) > 255) {
+            return [[], 'Judul task maksimal 255 karakter.'];
+        }
+
+        $d = DateTime::createFromFormat('Y-m-d', $deadline);
+        if (!$d || $d->format('Y-m-d') !== $deadline) {
+            return [[], 'Deadline wajib diisi dengan tanggal yang valid.'];
+        }
+
+        if (!in_array($status, M_Tasks::STATUS, true)) {
+            return [[], 'Status tidak valid.'];
+        }
+        if (!in_array($prioritas, M_Tasks::PRIORITAS, true)) {
+            return [[], 'Prioritas tidak valid.'];
+        }
+
+        if ($progress === '') {
+            $progress = '0';
+        }
+        if (!ctype_digit($progress) || (int) $progress > 100) {
+            return [[], 'Progress harus berupa angka 0 sampai 100.'];
+        }
+        $progress = (int) $progress;
+
+        // Task yang sudah selesai otomatis 100%
+        if ($status === 'selesai') {
+            $progress = 100;
+        }
+
+        // Progress 100% hanya boleh untuk task berstatus Selesai
+        if ($progress === 100 && $status !== 'selesai') {
+            return [[], 'Progress 100% hanya untuk task berstatus Selesai. Ubah status ke Selesai atau turunkan progress.'];
+        }
+
+        return [[
+            'judul'     => $judul,
+            'deskripsi' => $deskripsi !== '' ? $deskripsi : null,
+            'deadline'  => $deadline,
+            'status'    => $status,
+            'prioritas' => $prioritas,
+            'progress'  => $progress,
+        ], null];
     }
 }

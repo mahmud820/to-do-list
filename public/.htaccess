@@ -16,8 +16,6 @@ RewriteBase /
 RewriteCond %{REQUEST_URI} !^/js/
 RewriteCond %{REQUEST_URI} !^/css/
 RewriteCond %{REQUEST_URI} !^/img/
-RewriteCond %{REQUEST_URI} !^/fonts/
-RewriteCond %{REQUEST_URI} !^/vendor/
 
 # ===========================
 # ROUTING FOR MVC

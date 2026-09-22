@@ -1,159 +1,179 @@
-<div class="container-fluid mt-3">
-  <?php
-  function highlight($text, $q)
-  {
-    if (empty($q)) return htmlspecialchars($text);
-    $q_quoted = preg_quote($q, '/');
-    return preg_replace('/(' . $q_quoted . ')/i', '<mark>$1</mark>', htmlspecialchars($text));
-  }
-  $q = $data['q'] ?? '';
-  ?>
-  <div class="d-flex justify-content-between align-items-center mb-3">
-    <h4 class="mb-0">Daftar Agenda</h4>
-    <div class="d-flex align-items-center gap-2">
-      <form class="flex-grow-1" method="get" action="">
-        <input type="search" name="q" class="form-control" placeholder="Cari agenda..." value="<?= htmlspecialchars($q); ?>">
-      </form>
+<?php
+
+/** @var array $data */
+
+$q = $data['q'];
+$filter = $data['filter'];
+$tabs = [
+  'today'    => 'Hari Ini',
+  'upcoming' => 'Mendatang',
+  'past'     => 'Lewat',
+  'all'      => 'Semua Agenda',
+];
+?>
+<section class="page">
+  <div class="page__head">
+    <div>
+      <h1 class="page__title">Agenda &amp; Jadwal</h1>
+      <p class="page__sub">Kapan saya harus melakukan kegiatan? Atur jadwal beserta checklist detailnya.</p>
+    </div>
+    <div class="page__actions">
+      <button type="button" class="btn btn--agenda" data-agenda-new>
+        <?= icon('plus'); ?> <span>Tambah Agenda</span>
+      </button>
     </div>
   </div>
 
-  <hr class="mb-4" style="border-top: 2px solid #ccc;">
+  <!-- Tab filter -->
+  <nav class="tabs" aria-label="Filter agenda">
+    <?php foreach ($tabs as $key => $label) : ?>
+      <a class="tabs__item<?= $filter === $key ? ' tabs__item--active' : ''; ?>"
+        href="<?= BASEURL; ?>/agenda?filter=<?= $key; ?><?= $q !== '' ? '&amp;q=' . urlencode($q) : ''; ?>"
+        <?= $filter === $key ? 'aria-current="page"' : ''; ?>><?= e($label); ?></a>
+    <?php endforeach; ?>
+  </nav>
 
-  <?php if (!empty($q)) : ?>
-    <div class="mb-3">Hasil untuk: <strong><?= htmlspecialchars($q); ?></strong></div>
-  <?php endif; ?>
-
-  <div class="mb-3 text-end">
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addAgendaModal">Tambah Agenda</button>
-  </div>
-
-  <div class="row g-4 align-items-stretch">
-    <?php if (!empty($data['agendas'])) : ?>
-      <?php foreach ($data['agendas'] as $agenda) : ?>
-        <div class="col-md-6 d-flex">
-          <div class="card w-100">
-            <div class="card-body d-flex flex-column">
-
-              <div class="d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0"><?= highlight($agenda['judul'], $q); ?></h5>
-                <div>
-                  <button class="btn btn-sm btn-primary me-1 btn-edit-agenda"
-                    data-id="<?= $agenda['id']; ?>" data-judul="<?= htmlspecialchars($agenda['judul']); ?>" data-tanggal="<?= htmlspecialchars($agenda['tanggal']); ?>">Edit</button>
-                  <button class="btn btn-sm btn-danger btn-delete-agenda" data-id="<?= $agenda['id']; ?>">Hapus</button>
-                </div>
-              </div>
-
-              <hr>
-
-              <div class="mb-3 agenda-list" id="agenda-items-<?= $agenda['id']; ?>">
-                <?php $items = $data['items'][$agenda['id']] ?? []; ?>
-                <?php if (!empty($items)) : ?>
-                  <?php foreach ($items as $item) : ?>
-                    <div class="d-flex align-items-center justify-content-between mb-1">
-                      <div>
-                        <input type="checkbox" class="form-check-input me-2 toggle-item" data-id="<?= $item['id']; ?>" <?= $item['status'] ? 'checked' : ''; ?>>
-                        <?php $itemText = highlight($item['nama_item'], $q); ?>
-                        <span <?= $item['status'] ? 'class="text-muted text-decoration-line-through"' : ''; ?>><?= $itemText; ?></span>
-                      </div>
-                      <div>
-                        <button class="btn btn-sm btn-danger btn-delete-item" data-id="<?= $item['id']; ?>">Hapus</button>
-                      </div>
-                    </div>
-                  <?php endforeach; ?>
-                <?php else : ?>
-                  <div class="text-muted">Belum ada item.</div>
-                <?php endif; ?>
-              </div>
-
-              <form class="add-item-form mt-2" data-agenda-id="<?= $agenda['id']; ?>">
-                <div class="input-group">
-                  <input type="text" name="nama_item" class="form-control" placeholder="Tambahkan item..." required>
-                  <button class="btn btn-outline-secondary" type="submit">Tambah</button>
-                </div>
-              </form>
-
-              <div class="mt-auto d-flex justify-content-between align-items-center">
-                <div>
-                  <i class="bi bi-calendar-event"></i>
-                  <?= $agenda['tanggal'] ? date('d M Y', strtotime($agenda['tanggal'])) : '<span class="text-muted">(Tanggal kosong)</span>'; ?>
-                </div>
-                <div>
-                  <i class="bi bi-check2-square text-success"></i> Dilakukan: <strong><?= $agenda['done_items']; ?></strong>
-                  &nbsp;&nbsp;
-                  <i class="bi bi-x-circle text-danger"></i> Tidak dilakukan: <strong><?= max(0, $agenda['total_items'] - $agenda['done_items']); ?></strong>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      <?php endforeach; ?>
-    <?php else : ?>
-      <div class="col-12">
-        <?php if (!empty($q)) : ?>
-          <div class="alert alert-warning">Tidak ada hasil untuk <strong><?= htmlspecialchars($q); ?></strong>.</div>
-        <?php else : ?>
-          <div class="alert alert-info">Belum ada agenda. Klik <strong>Tambah Agenda</strong> untuk mulai.</div>
-        <?php endif; ?>
-      </div>
+  <form class="toolbar" method="get" action="<?= BASEURL; ?>/agenda">
+    <input type="hidden" name="filter" value="<?= e($filter); ?>">
+    <div class="search">
+      <?= icon('search'); ?>
+      <input type="search" name="q" class="input" placeholder="Cari agenda atau item checklist..." value="<?= e($q); ?>" aria-label="Cari agenda">
+    </div>
+    <?php if ($q !== '') : ?>
+      <a class="btn btn--ghost" href="<?= BASEURL; ?>/agenda?filter=<?= e($filter); ?>">Reset</a>
     <?php endif; ?>
-  </div>
+  </form>
 
-</div>
-
-<!-- Modal Tambah Agenda -->
-<div class="modal fade" id="addAgendaModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form id="addAgendaForm">
-        <div class="modal-header">
-          <h5 class="modal-title">Tambah Agenda</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <div class="mb-3">
-            <label class="form-label">Judul</label>
-            <input type="text" name="judul" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label">Tanggal</label>
-            <input type="date" name="tanggal" class="form-control">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Simpan</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-        </div>
-      </form>
+  <?php if (empty($data['agendas'])) : ?>
+    <div class="empty">
+      <?= icon('calendar'); ?>
+      <?php if ($q !== '') : ?>
+        <p>Tidak ada agenda yang cocok dengan <strong><?= e($q); ?></strong>.</p>
+      <?php else : ?>
+        <p>Tidak ada agenda pada kategori ini.</p>
+      <?php endif; ?>
     </div>
-  </div>
-</div>
+  <?php else : ?>
+    <div class="grid grid--wide">
+      <?php foreach ($data['agendas'] as $a) :
+        $items = $data['items'][$a['id']] ?? [];
+        $total = (int) $a['total_items'];
+        $done = (int) $a['done_items'];
+        $persen = $total > 0 ? (int) round($done / $total * 100) : 0;
+        $payload = [
+          'id'            => (int) $a['id'],
+          'judul'         => $a['judul'],
+          'deskripsi'     => $a['deskripsi'],
+          'tanggal'       => $a['tanggal'],
+          'waktu_mulai'   => jam($a['waktu_mulai']),
+          'waktu_selesai' => jam($a['waktu_selesai']),
+        ]; ?>
+        <article class="card card--agenda">
+          <div class="card__row">
+            <div>
+              <span class="badge badge--agenda">
+                <?php if (!$a['tanggal']) : ?>Tanpa tanggal
+                <?php elseif ($a['tanggal'] === $data['today']) : ?>Hari Ini
+                <?php else : ?><?= e(tanggal_indo($a['tanggal'])); ?><?php endif; ?>
+              </span>
+              <h3 class="card__title"><?= highlight($a['judul'], $q); ?></h3>
+              <p class="meta"><?= icon('clock'); ?> <?= e(rentang_waktu($a)); ?></p>
+            </div>
+            <span class="card__actions">
+              <button type="button" class="btn btn--ghost btn--icon btn--sm" data-agenda-edit="<?= e(json_encode($payload, JSON_UNESCAPED_UNICODE)); ?>" aria-label="Edit agenda" title="Edit"><?= icon('edit'); ?></button>
+              <button type="button" class="btn btn--ghost btn--icon btn--sm btn--danger-hover" data-agenda-delete="<?= (int) $a['id']; ?>" aria-label="Hapus agenda" title="Hapus"><?= icon('trash'); ?></button>
+            </span>
+          </div>
 
-<!-- Modal Edit Agenda -->
-<div class="modal fade" id="editAgendaModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <form id="editAgendaForm">
-        <div class="modal-header">
-          <h5 class="modal-title">Edit Agenda</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" name="id" id="edit_id">
-          <div class="mb-3">
-            <label class="form-label">Judul</label>
-            <input type="text" name="judul" id="edit_judul" class="form-control" required>
+          <?php if (!empty($a['deskripsi'])) : ?>
+            <p class="note-box"><?= nl2br(highlight($a['deskripsi'], $q)); ?></p>
+          <?php endif; ?>
+
+          <div class="checklist">
+            <div class="checklist__head">
+              <span>Checklist (<?= $done; ?>/<?= $total; ?>)</span>
+              <?php if ($total > 0) : ?><strong class="text-agenda"><?= $persen; ?>%</strong><?php endif; ?>
+            </div>
+            <?php if ($total > 0) : ?>
+              <div class="progress progress--agenda" role="progressbar" aria-valuenow="<?= $persen; ?>" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress__bar" style="width: <?= $persen; ?>%"></div>
+              </div>
+            <?php endif; ?>
+
+            <ul class="checklist__items">
+              <?php foreach ($items as $item) : ?>
+                <li class="check<?= $item['status'] ? ' check--done' : ''; ?>">
+                  <label>
+                    <input type="checkbox" class="checkbox" data-toggle-item="<?= (int) $item['id']; ?>" <?= $item['status'] ? 'checked' : ''; ?>>
+                    <span><?= highlight($item['nama_item'], $q); ?></span>
+                  </label>
+                  <button type="button" class="btn btn--ghost btn--icon btn--xs btn--danger-hover" data-delete-item="<?= (int) $item['id']; ?>" aria-label="Hapus item" title="Hapus item"><?= icon('x'); ?></button>
+                </li>
+              <?php endforeach; ?>
+              <?php if (!$items) : ?>
+                <li class="muted small">Belum ada item.</li>
+              <?php endif; ?>
+            </ul>
+
+            <form class="add-item" data-add-item="<?= (int) $a['id']; ?>">
+              <input type="text" name="nama_item" class="input input--sm" placeholder="Tambahkan item..." maxlength="150" required aria-label="Nama item baru">
+              <button type="submit" class="btn btn--ghost btn--sm">Tambah</button>
+            </form>
           </div>
-          <div class="mb-3">
-            <label class="form-label">Tanggal</label>
-            <input type="date" name="tanggal" id="edit_tanggal" class="form-control">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="submit" class="btn btn-primary">Simpan</button>
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-        </div>
-      </form>
+        </article>
+      <?php endforeach; ?>
     </div>
+  <?php endif; ?>
+</section>
+
+<!-- Modal tambah/edit agenda -->
+<div class="modal" id="agendaModal" hidden role="dialog" aria-modal="true" aria-labelledby="agendaModalTitle">
+  <div class="modal__box">
+    <div class="modal__head">
+      <h2 id="agendaModalTitle">Tambah Agenda Baru</h2>
+      <button type="button" class="btn btn--ghost btn--icon" data-modal-close aria-label="Tutup"><?= icon('x'); ?></button>
+    </div>
+    <form id="agendaForm" class="modal__body">
+      <input type="hidden" name="id" id="agenda_id">
+
+      <div class="field">
+        <label for="agenda_judul">Judul Agenda</label>
+        <input type="text" class="input" id="agenda_judul" name="judul" maxlength="100" required>
+      </div>
+
+      <div class="field">
+        <label for="agenda_deskripsi">Deskripsi</label>
+        <textarea class="textarea" id="agenda_deskripsi" name="deskripsi" rows="2"></textarea>
+      </div>
+
+      <div class="field">
+        <label for="agenda_tanggal">Tanggal</label>
+        <input type="date" class="input" id="agenda_tanggal" name="tanggal">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="agenda_mulai">Waktu Mulai</label>
+          <input type="time" class="input" id="agenda_mulai" name="waktu_mulai">
+        </div>
+        <div class="field">
+          <label for="agenda_selesai">Waktu Selesai</label>
+          <input type="time" class="input" id="agenda_selesai" name="waktu_selesai">
+        </div>
+      </div>
+
+      <!-- Checklist awal (hanya saat tambah agenda; untuk agenda yang ada, ubah item lewat kartu) -->
+      <div class="field" id="agendaItemsField">
+        <label>Checklist Item (opsional)</label>
+        <div id="agendaItemsBuilder" class="builder"></div>
+        <button type="button" class="link link--btn" id="agendaItemAdd"><?= icon('plus'); ?> Tambah item checklist</button>
+      </div>
+      <p class="muted small" id="agendaEditItemsNote" hidden>Checklist agenda ini bisa ditambah, dicentang, atau dihapus langsung lewat kartu agenda setelah modal ini ditutup.</p>
+
+      <div class="modal__foot">
+        <button type="button" class="btn btn--ghost" data-modal-close>Batal</button>
+        <button type="submit" class="btn btn--agenda">Simpan Agenda</button>
+      </div>
+    </form>
   </div>
 </div>

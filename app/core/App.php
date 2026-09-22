@@ -1,6 +1,7 @@
 <?php
 
-class App {
+class App
+{
     protected $controller = 'Dashboard';
     protected $method = 'index';
     protected $params = [];
@@ -9,24 +10,28 @@ class App {
     {
         $url = $this->parseURL();
 
-        // controller
-        if (!empty($url) && file_exists('../app/controllers/' . $url[0] . '.php')) {
-            $this->controller = $url[0];
+        // controller (nama file diawali huruf kapital agar aman di server Linux)
+        if (!empty($url[0])) {
+            $name = ucfirst(strtolower($url[0]));
+
+            if (!preg_match('/^[A-Za-z_]+$/', $name) || !file_exists(__DIR__ . '/../controllers/' . $name . '.php')) {
+                $this->notFound('Halaman tidak ditemukan.');
+            }
+
+            $this->controller = $name;
             unset($url[0]);
-        } elseif (!empty($url)) {
-            die("Controller <strong>{$url[0]}</strong> tidak ditemukan.");
         }
 
-        require_once '../app/controllers/' . $this->controller . '.php';
+        require_once __DIR__ . '/../controllers/' . $this->controller . '.php';
         $this->controller = new $this->controller;
 
-        // method
+        // method (hanya method public yang boleh diakses lewat URL)
         if (isset($url[1])) {
-            if (method_exists($this->controller, $url[1])) {
+            if (preg_match('/^[A-Za-z_]+$/', $url[1]) && is_callable([$this->controller, $url[1]])) {
                 $this->method = $url[1];
                 unset($url[1]);
             } else {
-                die("Method <strong>{$url[1]}</strong> tidak ditemukan di controller {$this->controller}");
+                $this->notFound('Halaman tidak ditemukan.');
             }
         }
 
@@ -45,5 +50,21 @@ class App {
             return explode('/', $url);
         }
         return [];
+    }
+
+    private function notFound(string $message): void
+    {
+        // Guest tidak boleh melihat tampilan aplikasi (sidebar, menu) meski URL-nya salah
+        if (empty($_SESSION['user_id'])) {
+            header('Location: ' . BASEURL . '/auth/login');
+            exit;
+        }
+
+        http_response_code(404);
+        $data = ['judul' => '404', 'pesan' => $message];
+        require __DIR__ . '/../views/templates/header.php';
+        require __DIR__ . '/../views/templates/404.php';
+        require __DIR__ . '/../views/templates/footer.php';
+        exit;
     }
 }
