@@ -1,0 +1,30 @@
+# ===========================
+# BASIC SECURITY OPTIONS
+# ===========================
+Options -Indexes
+Options -Multiviews
+
+# Blokir akses langsung ke file tersembunyi/sensitif jika suatu saat tercampur di docroot
+<FilesMatch "^\.|\.(sql|log|md|env)$">
+  Require all denied
+</FilesMatch>
+
+# ===========================
+# ENABLE REWRITE
+# ===========================
+RewriteEngine On
+RewriteBase /
+
+# ===========================
+# AVOID REDIRECTING STATIC FILES
+# ===========================
+RewriteCond %{REQUEST_URI} !^/js/
+RewriteCond %{REQUEST_URI} !^/css/
+RewriteCond %{REQUEST_URI} !^/img/
+
+# ===========================
+# ROUTING FOR MVC
+# ===========================
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ index.php?url=$1 [L,QSA]
