@@ -10,13 +10,141 @@ function e($value): string
     return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 }
 
+// Nilai PHP -> literal JavaScript yang aman disisipkan di dalam <script>
+function js_value($value): string
+{
+    return json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE);
+}
+
+// ---------------------------------------------------------------
+// Tanggal (satu sumber kebenaran untuk "hari ini" & "mendekati deadline")
+// ---------------------------------------------------------------
+
+// Hari ini (YYYY-MM-DD) menurut zona waktu aplikasi
+function today_date(): string
+{
+    return date('Y-m-d');
+}
+
+// Batas akhir "mendekati deadline": hari ini + DEADLINE_SOON_DAYS
+function soon_date(): string
+{
+    return date('Y-m-d', strtotime('+' . DEADLINE_SOON_DAYS . ' days'));
+}
+
+// Tanggal valid berformat YYYY-MM-DD (menolak 2026-02-31 dan sejenisnya)
+function is_valid_date(string $date): bool
+{
+    $d = DateTime::createFromFormat('Y-m-d', $date);
+    return $d !== false && $d->format('Y-m-d') === $date;
+}
+
+// ---------------------------------------------------------------
+// Fase 8: Proteksi CSRF (synchronizer token, disimpan di session)
+// ---------------------------------------------------------------
+
+// Ambil token CSRF milik session saat ini (dibuat sekali, dipakai ulang)
+function csrf_token(): string
+{
+    if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+// Cetak hidden input siap pakai untuk form biasa (non-AJAX)
+function csrf_field(): string
+{
+    return '<input type="hidden" name="csrf_token" value="' . e(csrf_token()) . '">';
+}
+
+// Verifikasi token yang dikirim user terhadap token di session (timing-safe)
+function csrf_verify(?string $token): bool
+{
+    return !empty($_SESSION['csrf_token'])
+        && is_string($token)
+        && $token !== ''
+        && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+// ---------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------
+
+// Hitung informasi halaman. Nomor halaman di luar jangkauan otomatis dirapikan
+// (mis. setelah menghapus data terakhir di halaman ujung).
+function paginate(int $total, int $perPage, int $page): array
+{
+    $perPage = max(1, $perPage);
+    $pages = max(1, (int) ceil($total / $perPage));
+    $page = min(max(1, $page), $pages);
+
+    return [
+        'total'   => $total,
+        'perPage' => $perPage,
+        'page'    => $page,
+        'pages'   => $pages,
+        'offset'  => ($page - 1) * $perPage,
+    ];
+}
+
+// Navigasi halaman (HTML). $path mis. '/tasks'; $params = filter aktif (q, status, dst.)
+// yang harus ikut terbawa ke setiap link halaman.
+function pagination(array $pager, string $path, array $params = []): string
+{
+    if ($pager['pages'] <= 1) {
+        return '';
+    }
+
+    $params = array_filter($params, fn($v) => $v !== '' && $v !== null);
+    $link = function (int $p) use ($path, $params): string {
+        $qs = $params;
+        if ($p > 1) {
+            $qs['page'] = $p;
+        }
+        return BASEURL . $path . ($qs ? '?' . http_build_query($qs) : '');
+    };
+
+    $cur = $pager['page'];
+    $last = $pager['pages'];
+
+    // Nomor yang ditampilkan: pertama, terakhir, dan 2 di kiri/kanan halaman aktif
+    $show = array_unique(array_merge([1, $last], range(max(1, $cur - 2), min($last, $cur + 2))));
+    sort($show);
+
+    $html = '<nav class="pager" aria-label="Navigasi halaman"><ul class="pager__list">';
+
+    $html .= $cur > 1
+        ? '<li><a class="pager__item" href="' . e($link($cur - 1)) . '" rel="prev" aria-label="Halaman sebelumnya">&lsaquo;</a></li>'
+        : '<li><span class="pager__item pager__item--off" aria-hidden="true">&lsaquo;</span></li>';
+
+    $prev = 0;
+    foreach ($show as $p) {
+        if ($p - $prev > 1) {
+            $html .= '<li><span class="pager__gap" aria-hidden="true">&hellip;</span></li>';
+        }
+        $html .= $p === $cur
+            ? '<li><span class="pager__item pager__item--active" aria-current="page">' . $p . '</span></li>'
+            : '<li><a class="pager__item" href="' . e($link($p)) . '" aria-label="Halaman ' . $p . '">' . $p . '</a></li>';
+        $prev = $p;
+    }
+
+    $html .= $cur < $last
+        ? '<li><a class="pager__item" href="' . e($link($cur + 1)) . '" rel="next" aria-label="Halaman berikutnya">&rsaquo;</a></li>'
+        : '<li><span class="pager__item pager__item--off" aria-hidden="true">&rsaquo;</span></li>';
+
+    $from = $pager['offset'] + 1;
+    $to = min($pager['total'], $pager['offset'] + $pager['perPage']);
+
+    return $html . '</ul><p class="pager__info muted small">Menampilkan ' . $from . '&ndash;' . $to . ' dari ' . $pager['total'] . '</p></nav>';
+}
+
 // Escape karakter khusus LIKE (% dan _) agar dicari sebagai teks biasa. Pakai bersama: LIKE ... ESCAPE '!'
 function like_escape(string $s): string
 {
     return str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $s);
 }
 
-// Escape lalu beri <mark> pada kata yang dicari
 // Escape lalu beri <mark> pada kata yang dicari (pencocokan dilakukan pada teks mentah)
 function highlight($text, $q): string
 {

@@ -4,6 +4,11 @@
 Options -Indexes
 Options -Multiviews
 
+# Blokir akses langsung ke file tersembunyi/sensitif jika suatu saat tercampur di docroot
+<FilesMatch "^\.|\.(sql|log|md|env)$">
+  Require all denied
+</FilesMatch>
+
 # ===========================
 # ENABLE REWRITE
 # ===========================

@@ -108,6 +108,10 @@ $labelDeadline = [
         </article>
       <?php endforeach; ?>
     </div>
+
+    <?= pagination($data['pager'], '/tasks', [
+      'q' => $q, 'status' => $data['status'], 'prioritas' => $data['prioritas'], 'deadline' => $data['deadline'],
+    ]); ?>
   <?php endif; ?>
 </section>
 

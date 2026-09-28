@@ -4,8 +4,8 @@ class Dashboard extends Controller
 {
     public function index()
     {
-        $today = date('Y-m-d');
-        $soon = date('Y-m-d', strtotime('+' . DEADLINE_SOON_DAYS . ' days'));
+        $today = today_date();
+        $soon = soon_date();
 
         $tasks = $this->model('M_Tasks');
         $agenda = $this->model('M_Agenda');
@@ -27,8 +27,6 @@ class Dashboard extends Controller
         $data['notesTotal'] = $notes->countAll();
         $data['latestNotes'] = $notes->getLatest(3);
 
-        $this->view('templates/header', $data);
-        $this->view('dashboard/index', $data);
-        $this->view('templates/footer');
+        $this->page('dashboard/index', $data);
     }
 }

@@ -1,6 +1,6 @@
 <?php
 $judul = $data['judul'] ?? 'To Do List';
-$navAktif = strtolower($judul);
+$navAktif = $data['nav'] ?? ''; // diisi Controller::page()
 $namaUser = $_SESSION['user'] ?? '';
 
 $menu = [
@@ -19,7 +19,7 @@ $menu = [
   <title><?= e($judul); ?> - Personal Task Hub</title>
 
   <!-- Terapkan tema sebelum halaman digambar agar tidak berkedip -->
-  <script>
+  <script nonce="<?= e(CSP_NONCE); ?>">
     (function() {
       try {
         var t = localStorage.getItem('th_theme');
@@ -76,6 +76,7 @@ $menu = [
             <?= icon('moon', 'icon--moon'); ?><?= icon('sun', 'icon--sun'); ?>
           </button>
           <form method="post" action="<?= BASEURL; ?>/auth/logout">
+            <?= csrf_field(); ?>
             <button type="submit" class="btn btn--ghost btn--icon btn--danger-hover" aria-label="Keluar" title="Keluar">
               <?= icon('logout'); ?>
             </button>

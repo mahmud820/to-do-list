@@ -48,6 +48,8 @@
         </article>
       <?php endforeach; ?>
     </div>
+
+    <?= pagination($data['pager'], '/notes', ['q' => $q]); ?>
   <?php endif; ?>
 </section>
 

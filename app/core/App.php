@@ -14,7 +14,7 @@ class App
         if (!empty($url[0])) {
             $name = ucfirst(strtolower($url[0]));
 
-            if (!preg_match('/^[A-Za-z_]+$/', $name) || !file_exists(__DIR__ . '/../controllers/' . $name . '.php')) {
+            if (!preg_match('/^[A-Za-z]+$/', $name) || !file_exists(__DIR__ . '/../controllers/' . $name . '.php')) {
                 $this->notFound('Halaman tidak ditemukan.');
             }
 
@@ -27,7 +27,7 @@ class App
 
         // method (hanya method public yang boleh diakses lewat URL)
         if (isset($url[1])) {
-            if (preg_match('/^[A-Za-z_]+$/', $url[1]) && is_callable([$this->controller, $url[1]])) {
+            if (preg_match('/^[A-Za-z]+$/', $url[1]) && is_callable([$this->controller, $url[1]])) {
                 $this->method = $url[1];
                 unset($url[1]);
             } else {

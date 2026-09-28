@@ -2,13 +2,6 @@
 (function () {
   "use strict";
 
-  // ---------- Util ----------
-  function cssVar(name) {
-    return getComputedStyle(document.documentElement)
-      .getPropertyValue(name)
-      .trim();
-  }
-
   // Tanggal lokal hari ini (YYYY-MM-DD), bukan UTC
   function today() {
     var d = new Date();
@@ -17,203 +10,119 @@
     return d.getFullYear() + "-" + m + "-" + day;
   }
 
-  // ---------- Toast notifikasi ----------
-  var TOAST = { duration: 4000, errorDuration: 6000, max: 4 };
-
-  var TOAST_TITLES = {
-    success: "Berhasil",
-    error: "Gagal",
-    warning: "Peringatan",
-    info: "Informasi",
-    delete: "Dihapus",
-  };
-
-  function svgIcon(inner) {
-    return (
-      '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-      'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-      inner +
-      "</svg>"
-    );
-  }
-
-  var TOAST_ICONS = {
-    success: svgIcon('<path d="M20 6 9 17l-5-5"/>'),
-    error: svgIcon('<path d="M18 6 6 18M6 6l12 12"/>'),
-    warning: svgIcon(
-      '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4M12 17h.01"/>',
-    ),
-    info: svgIcon(
-      '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>',
-    ),
-    delete: svgIcon(
-      '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-    ),
-  };
-  var ICON_CLOSE = svgIcon('<path d="M18 6 6 18M6 6l12 12"/>');
-  var ICON_UNDO = svgIcon(
-    '<path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>',
-  );
-
-  var toastBox = null;
-
-  function toastContainer() {
-    if (!toastBox) {
-      toastBox = document.createElement("div");
-      toastBox.className = "toast-container";
-      toastBox.setAttribute("aria-live", "polite");
-      document.body.appendChild(toastBox);
+  // ---------- Notifikasi & konfirmasi (native, tanpa dependency luar) ----------
+  function toastStack() {
+    var stack = document.getElementById("toastStack");
+    if (!stack) {
+      stack = document.createElement("div");
+      stack.id = "toastStack";
+      stack.className = "toast-stack";
+      stack.setAttribute("aria-live", "polite");
+      document.body.appendChild(stack);
     }
-    return toastBox;
+    return stack;
   }
 
-  function dismissToast(el) {
-    if (!el || el.classList.contains("is-leaving")) return;
-    clearTimeout(el._timer);
-    el.classList.add("is-leaving");
-    // Pakai timeout (bukan animationend) agar tetap terhapus bila animasi dimatikan
+  function toast(message, type) {
+    var stack = toastStack();
+    var item = document.createElement("div");
+    item.className = "toast toast--" + (type === "error" ? "error" : "success");
+    item.textContent = message;
+    stack.appendChild(item);
+
+    requestAnimationFrame(function () {
+      item.classList.add("is-visible");
+    });
+
     setTimeout(function () {
-      el.remove();
-    }, 260);
+      item.classList.remove("is-visible");
+      setTimeout(function () {
+        item.remove();
+      }, 250);
+    }, 2200);
   }
 
-  // type: success | error | warning | info | delete
-  // opts: { title, duration, action: { text, onClick } }
-  function toast(message, type, opts) {
-    opts = opts || {};
-    if (!TOAST_ICONS[type]) type = "success";
-
-    var duration =
-      opts.duration ||
-      (type === "error" ? TOAST.errorDuration : TOAST.duration);
-    var box = toastContainer();
-
-    var el = document.createElement("div");
-    el.className = "toast toast--" + type;
-    el.setAttribute("role", type === "error" ? "alert" : "status");
-    el.innerHTML =
-      '<div class="toast__body">' +
-      '<span class="toast__icon">' +
-      TOAST_ICONS[type] +
-      "</span>" +
-      '<div class="toast__text"><strong class="toast__title"></strong><p class="toast__msg"></p></div>' +
-      '<button type="button" class="toast__close" aria-label="Tutup notifikasi">' +
-      ICON_CLOSE +
-      "</button>" +
-      "</div>" +
-      '<div class="toast__bar"><span></span></div>';
-
-    // textContent: pesan dari server tidak pernah dibaca sebagai HTML
-    el.querySelector(".toast__title").textContent =
-      opts.title || TOAST_TITLES[type];
-    el.querySelector(".toast__msg").textContent = message || "";
-    el.querySelector(".toast__bar > span").style.animationDuration =
-      duration + "ms";
-
-    // Tombol aksi opsional (misal "Batal" untuk undo)
-    if (opts.action && opts.action.text) {
-      var act = document.createElement("button");
-      act.type = "button";
-      act.className = "toast__action";
-      act.innerHTML = ICON_UNDO;
-      act.appendChild(document.createTextNode(opts.action.text));
-      act.addEventListener("click", function () {
-        if (typeof opts.action.onClick === "function") opts.action.onClick();
-        dismissToast(el);
-      });
-      el.querySelector(".toast__body").insertBefore(
-        act,
-        el.querySelector(".toast__close"),
-      );
-    }
-
-    el.querySelector(".toast__close").addEventListener("click", function () {
-      dismissToast(el);
-    });
-
-    // Auto-dismiss; berhenti sementara saat kursor mouse di atas toast
-    var remaining = duration;
-    var startedAt = 0;
-    function start() {
-      startedAt = Date.now();
-      el._timer = setTimeout(function () {
-        dismissToast(el);
-      }, remaining);
-    }
-    el.addEventListener("pointerenter", function (e) {
-      if (e.pointerType !== "mouse") return;
-      clearTimeout(el._timer);
-      remaining = Math.max(remaining - (Date.now() - startedAt), 800);
-    });
-    el.addEventListener("pointerleave", function (e) {
-      if (e.pointerType !== "mouse" || el.classList.contains("is-leaving"))
-        return;
-      start();
-    });
-
-    box.appendChild(el);
-    start();
-
-    // Batasi jumlah toast yang tampil bersamaan
-    var live = box.querySelectorAll(".toast:not(.is-leaving)");
-    for (var i = 0; i < live.length - TOAST.max; i++) dismissToast(live[i]);
-
-    return el;
-  }
-
-  // Toast yang harus tampil SETELAH halaman dimuat ulang (aksi sukses -> reload)
-  var FLASH_KEY = "th_flash";
-
-  function flash(message, type) {
-    try {
-      sessionStorage.setItem(
-        FLASH_KEY,
-        JSON.stringify({ m: message, t: type }),
-      );
-    } catch (e) {}
-  }
-
-  function showFlash() {
-    try {
-      var raw = sessionStorage.getItem(FLASH_KEY);
-      if (!raw) return;
-      sessionStorage.removeItem(FLASH_KEY);
-      var f = JSON.parse(raw);
-      toast(f.m, f.t);
-    } catch (e) {}
-  }
-
-  // ---------- Konfirmasi (SweetAlert2) ----------
-  function swalTheme() {
-    return { background: cssVar("--surface"), color: cssVar("--text") };
-  }
-
+  // Dialog konfirmasi (dipakai sebelum aksi hapus). Mengembalikan Promise<boolean>.
   function confirmBox(title, text) {
-    return Swal.fire(
-      Object.assign(
-        {
-          title: title,
-          text: text,
-          icon: "warning",
-          showCancelButton: true,
-          confirmButtonText: "Ya, hapus",
-          cancelButtonText: "Batal",
-          confirmButtonColor: cssVar("--danger"),
-          reverseButtons: true,
-          focusCancel: true,
-        },
-        swalTheme(),
-      ),
-    ).then(function (r) {
-      return r.isConfirmed;
+    return new Promise(function (resolve) {
+      var overlay = document.createElement("div");
+      overlay.className = "modal";
+      overlay.innerHTML =
+        '<div class="modal__box confirm-box" role="alertdialog" aria-modal="true" aria-labelledby="confirmBoxTitle">' +
+        '<div class="modal__body">' +
+        '<h2 id="confirmBoxTitle" class="confirm-box__title"></h2>' +
+        '<p class="confirm-box__text muted"></p>' +
+        "</div>" +
+        '<div class="modal__foot">' +
+        '<button type="button" class="btn btn--ghost" data-confirm-cancel>Batal</button>' +
+        '<button type="button" class="btn btn--danger" data-confirm-ok>Ya, hapus</button>' +
+        "</div>" +
+        "</div>";
+
+      overlay.querySelector(".confirm-box__title").textContent = title || "";
+      var textEl = overlay.querySelector(".confirm-box__text");
+      if (text) {
+        textEl.textContent = text;
+      } else {
+        textEl.remove();
+      }
+
+      document.body.appendChild(overlay);
+      document.body.classList.add("is-locked");
+
+      var okBtn = overlay.querySelector("[data-confirm-ok]");
+      var cancelBtn = overlay.querySelector("[data-confirm-cancel]");
+
+      function finish(result) {
+        document.removeEventListener("keydown", onKeydown);
+        document.body.classList.remove("is-locked");
+        overlay.remove();
+        resolve(result);
+      }
+
+      function onKeydown(e) {
+        if (e.key === "Escape") finish(false);
+      }
+
+      okBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        finish(true);
+      });
+      cancelBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        finish(false);
+      });
+      overlay.addEventListener("click", function (e) {
+        if (e.target === overlay) {
+          e.stopPropagation();
+          finish(false);
+        }
+      });
+      document.addEventListener("keydown", onKeydown);
+
+      setTimeout(function () {
+        cancelBtn.focus();
+      }, 30);
     });
   }
 
   // ---------- Request AJAX ----------
   // data: FormData atau object biasa. Selalu mengembalikan {status, message}
+  // Token CSRF (CSRF_TOKEN, didefinisikan di footer.php) selalu disertakan otomatis.
   function post(url, data) {
-    var body =
-      data instanceof FormData ? data : new URLSearchParams(data || {});
+    var body;
+    if (data instanceof FormData) {
+      if (!data.has("csrf_token") && typeof CSRF_TOKEN !== "undefined") {
+        data.append("csrf_token", CSRF_TOKEN);
+      }
+      body = data;
+    } else {
+      var params = Object.assign({}, data || {});
+      if (!("csrf_token" in params) && typeof CSRF_TOKEN !== "undefined") {
+        params.csrf_token = CSRF_TOKEN;
+      }
+      body = new URLSearchParams(params);
+    }
     return fetch(url, {
       method: "POST",
       body: body,
@@ -227,29 +136,51 @@
               location.href = data.redirect || BASEURL + "/auth/login";
             }, 900);
           }
+          // Token CSRF kedaluwarsa (mis. tab dibiarkan terbuka lama): muat ulang agar dapat token baru
+          if (res.status === 403) {
+            setTimeout(function () {
+              location.reload();
+            }, 1500);
+          }
           return data;
         });
       })
       .catch(function () {
         return {
           status: "error",
-          message: "Terjadi kesalahan pada server. Coba lagi.",
+          message: "Permintaan gagal. Periksa koneksi internet Anda, lalu coba lagi.",
         };
       });
   }
 
-  // Tampilkan hasil; jika sukses muat ulang halaman agar data terbaru tampil.
-  // opts.type: jenis toast saat sukses (default "success", hapus pakai "delete")
-  // opts.silent: reload tanpa toast (untuk centang checklist dsb.)
+  // Tampilkan hasil; jika sukses muat ulang halaman agar data terbaru tampil
   function handle(result, opts) {
     opts = opts || {};
     if (result && result.status === "success") {
-      if (!opts.silent) flash(result.message, opts.type || "success");
-      location.reload();
+      if (opts.silent) {
+        location.reload();
+      } else {
+        toast(result.message);
+        setTimeout(function () {
+          location.reload();
+        }, 1500);
+      }
       return true;
     }
     toast((result && result.message) || "Terjadi kesalahan.", "error");
     return false;
+  }
+
+  // Konfirmasi lalu hapus lewat POST {id}. opts: {url, id, title, text, silent}
+  function confirmDelete(opts) {
+    return confirmBox(opts.title || "Yakin ingin menghapus?", opts.text).then(
+      function (ok) {
+        if (!ok) return false;
+        return post(opts.url, { id: opts.id }).then(function (result) {
+          return handle(result, { silent: !!opts.silent });
+        });
+      },
+    );
   }
 
   // Kirim form modal: cegah klik ganda, tutup modal jika sukses
@@ -364,13 +295,11 @@
     });
   });
 
-  showFlash();
-
   window.App = {
     today: today,
     toast: toast,
-    flash: flash,
     confirm: confirmBox,
+    confirmDelete: confirmDelete,
     post: post,
     handle: handle,
     submitForm: submitForm,

@@ -123,6 +123,8 @@ $tabs = [
         </article>
       <?php endforeach; ?>
     </div>
+
+    <?= pagination($data['pager'], '/agenda', ['filter' => $filter, 'q' => $q]); ?>
   <?php endif; ?>
 </section>
 
@@ -148,7 +150,7 @@ $tabs = [
 
       <div class="field">
         <label for="agenda_tanggal">Tanggal</label>
-        <input type="date" class="input" id="agenda_tanggal" name="tanggal">
+        <input type="date" class="input" id="agenda_tanggal" name="tanggal" required>
       </div>
 
       <div class="field-row">

@@ -11,7 +11,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login - Personal Task Hub</title>
 
-  <script>
+  <script nonce="<?= e(CSP_NONCE); ?>">
     (function() {
       try {
         var t = localStorage.getItem('th_theme');
@@ -42,6 +42,7 @@
       <?php endif; ?>
 
       <form method="post" action="<?= BASEURL; ?>/auth/login" autocomplete="on">
+        <?= csrf_field(); ?>
         <div class="field">
           <label for="username">Username</label>
           <div class="input-icon">

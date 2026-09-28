@@ -1,6 +1,6 @@
 <?php
 
-class M_Tasks
+class M_Tasks extends Model
 {
     // Nilai enum sesuai kolom `status` & `prioritas` di tabel tasks
     public const STATUS = ['belum selesai', 'sedang dikerjakan', 'selesai'];
@@ -8,16 +8,37 @@ class M_Tasks
     // Kategori filter deadline (selaras dengan state dari deadline_info())
     public const DEADLINE_FILTERS = ['overdue', 'today', 'soon', 'upcoming'];
 
-    private Database $db;
-
-    public function __construct()
+    // Semua task pada satu halaman, opsional dicari (judul/deskripsi) dan difilter
+    // status/prioritas/deadline. Task yang belum selesai tampil lebih dulu,
+    // diurutkan berdasarkan deadline terdekat.
+    public function getAllTasks(?string $q = null, ?string $status = null, ?string $prioritas = null, ?string $deadlineFilter = null, ?int $limit = null, int $offset = 0)
     {
-        $this->db = new Database;
+        [$whereSql, $params] = $this->buildFilter($q, $status, $prioritas, $deadlineFilter);
+
+        $sql = 'SELECT * FROM tasks' . $whereSql
+            . " ORDER BY (status <=> 'selesai') ASC, deadline ASC, id DESC";
+        if ($limit !== null) {
+            $sql .= ' LIMIT ' . (int) $limit . ' OFFSET ' . max(0, $offset);
+        }
+
+        $this->db->query($sql);
+        $this->db->bindAll($params);
+        return $this->db->resultSet();
     }
 
-    // Semua task, opsional dicari (judul/deskripsi) dan difilter status/prioritas.
-    // Task yang belum selesai tampil lebih dulu, diurutkan berdasarkan deadline terdekat.
-    public function getAllTasks($q = null, $status = null, $prioritas = null, $deadlineFilter = null)
+    // Jumlah task yang cocok dengan filter yang sama (untuk pagination)
+    public function countTasks(?string $q = null, ?string $status = null, ?string $prioritas = null, ?string $deadlineFilter = null): int
+    {
+        [$whereSql, $params] = $this->buildFilter($q, $status, $prioritas, $deadlineFilter);
+
+        $this->db->query('SELECT COUNT(*) AS total FROM tasks' . $whereSql);
+        $this->db->bindAll($params);
+        $row = $this->db->single();
+        return (int) ($row['total'] ?? 0);
+    }
+
+    // Susun klausa WHERE + parameter dari filter. Mengembalikan [sqlWhere, params]
+    private function buildFilter(?string $q, ?string $status, ?string $prioritas, ?string $deadlineFilter): array
     {
         $where = [];
         $params = [];
@@ -25,108 +46,96 @@ class M_Tasks
         if ($q !== null && $q !== '') {
             $like = '%' . like_escape($q) . '%';
             $where[] = "(judul LIKE :q1 ESCAPE '!' OR deskripsi LIKE :q2 ESCAPE '!')";
-            $params[':q1'] = $like;
-            $params[':q2'] = $like;
+            $params['q1'] = $like;
+            $params['q2'] = $like;
         }
         if (in_array($status, self::STATUS, true)) {
             $where[] = 'status = :status';
-            $params[':status'] = $status;
+            $params['status'] = $status;
         }
         if (in_array($prioritas, self::PRIORITAS, true)) {
             $where[] = 'prioritas = :prioritas';
-            $params[':prioritas'] = $prioritas;
+            $params['prioritas'] = $prioritas;
         }
         if (in_array($deadlineFilter, self::DEADLINE_FILTERS, true)) {
-            $today = date('Y-m-d');
-            $soon = date('Y-m-d', strtotime('+' . DEADLINE_SOON_DAYS . ' days'));
-
-            switch ($deadlineFilter) {
-                case 'overdue':
-                    $where[] = "NOT (status <=> 'selesai') AND deadline < :d_today";
-                    $params[':d_today'] = $today;
-                    break;
-                case 'today':
-                    $where[] = "NOT (status <=> 'selesai') AND deadline = :d_today";
-                    $params[':d_today'] = $today;
-                    break;
-                case 'soon':
-                    $where[] = "NOT (status <=> 'selesai') AND deadline > :d_today AND deadline <= :d_soon";
-                    $params[':d_today'] = $today;
-                    $params[':d_soon'] = $soon;
-                    break;
-                case 'upcoming':
-                    $where[] = "NOT (status <=> 'selesai') AND deadline > :d_soon";
-                    $params[':d_soon'] = $soon;
-                    break;
-            }
+            $this->addDeadlineFilter($deadlineFilter, $where, $params);
         }
 
-        $sql = 'SELECT * FROM tasks';
-        if ($where) {
-            $sql .= ' WHERE ' . implode(' AND ', $where);
-        }
-        $sql .= " ORDER BY (status <=> 'selesai') ASC, deadline ASC, id DESC";
-
-        $this->db->query($sql);
-        foreach ($params as $key => $value) {
-            $this->db->bind($key, $value);
-        }
-        return $this->db->resultSet();
+        return [$where ? ' WHERE ' . implode(' AND ', $where) : '', $params];
     }
 
-    public function getTaskById($id)
+    // Tambahkan kondisi filter deadline (hanya untuk task yang belum selesai)
+    private function addDeadlineFilter(string $filter, array &$where, array &$params): void
     {
-        $this->db->query("SELECT * FROM tasks WHERE id = :id");
-        $this->db->bind(':id', (int) $id);
-        return $this->db->single();
+        $where[] = "NOT (status <=> 'selesai')";
+
+        switch ($filter) {
+            case 'overdue':
+                $where[] = 'deadline < :d_today';
+                $params['d_today'] = today_date();
+                break;
+            case 'today':
+                $where[] = 'deadline = :d_today';
+                $params['d_today'] = today_date();
+                break;
+            case 'soon':
+                $where[] = 'deadline >= :d_today AND deadline <= :d_soon';
+                $params['d_today'] = today_date();
+                $params['d_soon'] = soon_date();
+                break;
+            case 'upcoming':
+                $where[] = 'deadline > :d_soon';
+                $params['d_soon'] = soon_date();
+                break;
+        }
     }
 
     // Tambah task baru. $data: judul, deskripsi, deadline, status, prioritas, progress
-    public function addTask($data)
+    public function addTask(array $data): bool
     {
-        $query = "INSERT INTO tasks (judul, deskripsi, deadline, status, prioritas, progress)
-              VALUES (:judul, :deskripsi, :deadline, :status, :prioritas, :progress)";
-
-        $this->db->query($query);
-        $this->db->bind('judul', $data['judul']);
-        $this->db->bind('deskripsi', $data['deskripsi']);
-        $this->db->bind('deadline', $data['deadline']);
-        $this->db->bind('status', $data['status']);
-        $this->db->bind('prioritas', $data['prioritas']);
-        $this->db->bind('progress', (int) $data['progress']);
+        $this->db->query("INSERT INTO tasks (judul, deskripsi, deadline, status, prioritas, progress)
+                          VALUES (:judul, :deskripsi, :deadline, :status, :prioritas, :progress)");
+        $this->bindTask($data);
 
         return $this->db->execute();
     }
 
     // Update task (kolom updated_at diisi otomatis oleh database)
-    public function updateTask($data)
+    public function updateTask(array $data): bool
     {
-        $query = "UPDATE tasks SET
-                    judul = :judul,
-                    deskripsi = :deskripsi,
-                    deadline = :deadline,
-                    status = :status,
-                    prioritas = :prioritas,
-                    progress = :progress
-                  WHERE id = :id";
-
-        $this->db->query($query);
+        $this->db->query("UPDATE tasks SET
+                            judul = :judul,
+                            deskripsi = :deskripsi,
+                            deadline = :deadline,
+                            status = :status,
+                            prioritas = :prioritas,
+                            progress = :progress
+                          WHERE id = :id");
         $this->db->bind('id', (int) $data['id']);
-        $this->db->bind('judul', $data['judul']);
-        $this->db->bind('deskripsi', $data['deskripsi']);
-        $this->db->bind('deadline', $data['deadline']);
-        $this->db->bind('status', $data['status']);
-        $this->db->bind('prioritas', $data['prioritas']);
-        $this->db->bind('progress', (int) $data['progress']);
+        $this->bindTask($data);
 
-        return $this->db->execute();
+        $this->db->execute();
+        return $this->db->rowCount() > 0;
     }
 
-    public function deleteTask($id)
+    private function bindTask(array $data): void
+    {
+        $this->db->bindAll([
+            'judul'     => $data['judul'],
+            'deskripsi' => $data['deskripsi'],
+            'deadline'  => $data['deadline'],
+            'status'    => $data['status'],
+            'prioritas' => $data['prioritas'],
+            'progress'  => (int) $data['progress'],
+        ]);
+    }
+
+    public function deleteTask(int $id): bool
     {
         $this->db->query("DELETE FROM tasks WHERE id = :id");
-        $this->db->bind('id', (int) $id);
-        return $this->db->execute();
+        $this->db->bind('id', $id);
+        $this->db->execute();
+        return $this->db->rowCount() > 0;
     }
 
     // Statistik untuk dashboard
@@ -140,9 +149,7 @@ class M_Tasks
                 COALESCE(SUM(NOT (status <=> 'selesai') AND deadline < :today1), 0) AS terlambat,
                 COALESCE(SUM(NOT (status <=> 'selesai') AND deadline BETWEEN :today2 AND :soon), 0) AS mendekati
             FROM tasks");
-        $this->db->bind('today1', $today);
-        $this->db->bind('today2', $today);
-        $this->db->bind('soon', $soon);
+        $this->db->bindAll(['today1' => $today, 'today2' => $today, 'soon' => $soon]);
         return $this->db->single();
     }
 

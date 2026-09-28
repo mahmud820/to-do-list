@@ -91,30 +91,22 @@
 
     var del = e.target.closest("[data-agenda-delete]");
     if (del) {
-      var id = del.getAttribute("data-agenda-delete");
-      App.confirm(
-        "Yakin ingin menghapus?",
-        "Agenda akan dihapus beserta seluruh itemnya!",
-      ).then(function (ok) {
-        if (ok)
-          App.post(BASEURL + "/agenda/delete", { id: id }).then(App.handle);
+      App.confirmDelete({
+        url: BASEURL + "/agenda/delete",
+        id: del.getAttribute("data-agenda-delete"),
+        text: "Agenda akan dihapus beserta seluruh itemnya!",
       });
       return;
     }
 
     var delItem = e.target.closest("[data-delete-item]");
     if (delItem) {
-      var itemId = delItem.getAttribute("data-delete-item");
-      App.confirm(
-        "Hapus item ini?",
-        "Item checklist akan dihapus permanen.",
-      ).then(function (ok) {
-        if (ok)
-          App.post(BASEURL + "/agenda/deleteItem", { id: itemId }).then(
-            function (r) {
-              App.handle(r, { silent: true });
-            },
-          );
+      App.confirmDelete({
+        url: BASEURL + "/agenda/deleteItem",
+        id: delItem.getAttribute("data-delete-item"),
+        title: "Hapus item ini?",
+        text: "Item checklist akan dihapus permanen.",
+        silent: true,
       });
     }
   });
@@ -142,6 +134,21 @@
       nama_item: f.elements["nama_item"].value,
     }).then(function (r) {
       if (!App.handle(r, { silent: true }) && btn) btn.disabled = false;
+    });
+  });
+
+  // Klik tab filter: bawa kata yang sedang diketik di kotak pencarian (walau belum tekan Enter)
+  document.querySelectorAll(".tabs__item").forEach(function (tab) {
+    tab.addEventListener("click", function (e) {
+      var input = document.querySelector('.toolbar input[name="q"]');
+      if (!input) return;
+
+      e.preventDefault();
+      var url = new URL(tab.href, location.href);
+      var q = input.value.trim();
+      if (q) url.searchParams.set("q", q);
+      else url.searchParams.delete("q");
+      location.href = url.toString();
     });
   });
 

@@ -22,6 +22,8 @@
   // Saat status Selesai, slider dikunci di 100% agar tidak ada tampilan yang menyesatkan.
   function syncProgressLock() {
     var locked = statusSel.value === "selesai";
+    // baru dibuka kuncinya dan masih 100% -> turunkan agar tidak bentrok dengan validasi server
+    if (!locked && range.disabled && range.value === "100") setProgress(0);
     range.disabled = locked;
     if (locked) setProgress(100);
   }
@@ -30,6 +32,8 @@
     form.reset();
     el("task_id").value = "";
     el("taskModalTitle").textContent = "Tambah Task Baru";
+    // Task baru tidak boleh berdeadline lampau (selaras dengan validasi server)
+    el("task_deadline").min = App.today();
     el("task_deadline").value = App.today();
     setProgress(0);
     syncProgressLock();
@@ -44,6 +48,8 @@
     el("task_deskripsi").value = t.deskripsi || "";
     el("task_status").value = t.status;
     el("task_prioritas").value = t.prioritas;
+    // Saat edit, deadline lama yang sudah lewat tetap boleh dipertahankan
+    el("task_deadline").removeAttribute("min");
     el("task_deadline").value = t.deadline;
     setProgress(t.progress);
     syncProgressLock();
@@ -76,13 +82,10 @@
 
     var del = e.target.closest("[data-task-delete]");
     if (del) {
-      var id = del.getAttribute("data-task-delete");
-      App.confirm(
-        "Yakin ingin menghapus?",
-        "Task yang dihapus tidak bisa dikembalikan!",
-      ).then(function (ok) {
-        if (ok)
-          App.post(BASEURL + "/tasks/delete", { id: id }).then(App.handle);
+      App.confirmDelete({
+        url: BASEURL + "/tasks/delete",
+        id: del.getAttribute("data-task-delete"),
+        text: "Task yang dihapus tidak bisa dikembalikan!",
       });
     }
   });

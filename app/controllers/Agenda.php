@@ -3,33 +3,28 @@
 class Agenda extends Controller
 {
     private const FILTERS = ['today', 'upcoming', 'past', 'all'];
+    private const ITEM_MAX_LENGTH = 150;
 
     public function index()
     {
-        $q = trim($_GET['q'] ?? '');
-        $filter = $_GET['filter'] ?? 'today';
-        if (!in_array($filter, self::FILTERS, true)) {
-            $filter = 'today';
-        }
+        $q = $this->queryParam('q');
+        $filter = $this->queryChoice('filter', self::FILTERS) ?: 'today';
 
         $model = $this->model('M_Agenda');
-        $today = date('Y-m-d');
+        $today = today_date();
+        $pager = paginate($model->countAgendas($q, $filter, $today), PER_PAGE_AGENDA, $this->queryPage());
+        $agendas = $model->getAllAgendas($q, $filter, $today, $pager['perPage'], $pager['offset']);
 
         $data['judul'] = 'Agenda';
         $data['q'] = $q;
         $data['filter'] = $filter;
         $data['today'] = $today;
-        $data['agendas'] = $model->getAllAgendas($q, $filter, $today);
+        $data['pager'] = $pager;
+        $data['agendas'] = $agendas;
+        // Checklist semua agenda diambil sekaligus (1 query), bukan satu query per agenda
+        $data['items'] = $model->getItemsGroupedByAgenda(array_column($agendas, 'id'));
 
-        // Checklist untuk tiap agenda
-        $data['items'] = [];
-        foreach ($data['agendas'] as $agenda) {
-            $data['items'][$agenda['id']] = $model->getItemsByAgenda($agenda['id']);
-        }
-
-        $this->view('templates/header', $data);
-        $this->view('agenda/index', $data);
-        $this->view('templates/footer');
+        $this->page('agenda/index', $data);
     }
 
     // Tambah agenda (beserta item checklist awal) via AJAX
@@ -39,67 +34,52 @@ class Agenda extends Controller
         [$data, $error] = $this->validated();
 
         if ($error) {
-            $this->json(['status' => 'error', 'message' => $error]);
+            $this->fail($error);
         }
 
-        // Item checklist awal: items[] (kosong diabaikan, >150 karakter ditolak
-        // agar perilakunya sama dengan addItem() -- tidak dipotong diam-diam)
-        $items = [];
-        if (isset($_POST['items']) && is_array($_POST['items'])) {
-            foreach ($_POST['items'] as $nama) {
-                $nama = is_string($nama) ? trim($nama) : '';
-                if ($nama === '') {
-                    continue;
-                }
-                if (mb_strlen($nama) > 150) {
-                    $this->json(['status' => 'error', 'message' => 'Nama item checklist maksimal 150 karakter.']);
-                }
-                $items[] = $nama;
-            }
+        [$items, $error] = $this->initialItems();
+        if ($error) {
+            $this->fail($error);
         }
 
-        if ($this->model('M_Agenda')->addAgenda($data, $items) !== false) {
-            $this->json(['status' => 'success', 'message' => 'Agenda berhasil ditambahkan!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal menambahkan agenda.']);
+        $this->respond(
+            $this->model('M_Agenda')->addAgenda($data, $items) !== false,
+            'Agenda berhasil ditambahkan!',
+            'Gagal menambahkan agenda.'
+        );
     }
 
     // Update agenda via AJAX
     public function update()
     {
         $this->requirePost();
+        $id = $this->requireId('agenda');
         [$data, $error] = $this->validated();
-        $id = (int) $this->post('id');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID agenda tidak ditemukan!']);
-        }
         if ($error) {
-            $this->json(['status' => 'error', 'message' => $error]);
+            $this->fail($error);
         }
 
         $data['id'] = $id;
 
-        if ($this->model('M_Agenda')->updateAgenda($data)) {
-            $this->json(['status' => 'success', 'message' => 'Agenda berhasil diupdate!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal mengupdate agenda.']);
+        $this->respond(
+            $this->model('M_Agenda')->updateAgenda($data),
+            'Agenda berhasil diupdate!',
+            'Gagal mengupdate agenda.'
+        );
     }
 
     // Hapus agenda (beserta item-nya) via AJAX
     public function delete()
     {
         $this->requirePost();
-        $id = (int) $this->post('id');
+        $id = $this->requireId('agenda');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID agenda tidak ditemukan!']);
-        }
-
-        if ($this->model('M_Agenda')->deleteAgenda($id)) {
-            $this->json(['status' => 'success', 'message' => 'Agenda berhasil dihapus!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal menghapus agenda.']);
+        $this->respond(
+            $this->model('M_Agenda')->deleteAgenda($id),
+            'Agenda berhasil dihapus!',
+            'Gagal menghapus agenda.'
+        );
     }
 
     // Tambah item checklist ke agenda
@@ -110,54 +90,75 @@ class Agenda extends Controller
         $nama = $this->post('nama_item');
 
         if ($agendaId <= 0 || $nama === '') {
-            $this->json(['status' => 'error', 'message' => 'Agenda dan nama item wajib diisi!']);
+            $this->fail('Agenda dan nama item wajib diisi!');
         }
-        if (mb_strlen($nama) > 150) {
-            $this->json(['status' => 'error', 'message' => 'Nama item maksimal 150 karakter.']);
-        }
-        if (!$this->model('M_Agenda')->getAgendaById($agendaId)) {
-            $this->json(['status' => 'error', 'message' => 'Agenda tidak ditemukan!']);
+        if (mb_strlen($nama) > self::ITEM_MAX_LENGTH) {
+            $this->fail('Nama item maksimal ' . self::ITEM_MAX_LENGTH . ' karakter.');
         }
 
-        if ($this->model('M_Agenda')->addItem($agendaId, $nama)) {
-            $this->json(['status' => 'success', 'message' => 'Item berhasil ditambahkan!']);
+        $model = $this->model('M_Agenda');
+        if (!$model->getAgendaById($agendaId)) {
+            $this->fail('Agenda tidak ditemukan!');
         }
-        $this->json(['status' => 'error', 'message' => 'Gagal menambahkan item.']);
+
+        $this->respond(
+            $model->addItem($agendaId, $nama),
+            'Item berhasil ditambahkan!',
+            'Gagal menambahkan item.'
+        );
     }
 
     // Toggle status selesai/belum sebuah item
     public function toggleItem()
     {
         $this->requirePost();
-        $id = (int) $this->post('id');
+        $id = $this->requireId('item');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID item tidak ditemukan!']);
-        }
-
-        if ($this->model('M_Agenda')->toggleItemStatus($id)) {
-            $this->json(['status' => 'success', 'message' => 'Status item berhasil diubah!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal mengubah status item.']);
+        $this->respond(
+            $this->model('M_Agenda')->toggleItemStatus($id),
+            'Status item berhasil diubah!',
+            'Gagal mengubah status item.'
+        );
     }
 
     public function deleteItem()
     {
         $this->requirePost();
-        $id = (int) $this->post('id');
+        $id = $this->requireId('item');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID item tidak ditemukan!']);
+        $this->respond(
+            $this->model('M_Agenda')->deleteItem($id),
+            'Item berhasil dihapus!',
+            'Gagal menghapus item.'
+        );
+    }
+
+    // Item checklist awal dari items[] (kosong diabaikan, terlalu panjang ditolak
+    // agar perilakunya sama dengan addItem() -- tidak dipotong diam-diam).
+    // Mengembalikan [daftarItem, pesanError]
+    private function initialItems(): array
+    {
+        $items = [];
+
+        if (isset($_POST['items']) && is_array($_POST['items'])) {
+            foreach ($_POST['items'] as $nama) {
+                $nama = is_string($nama) ? trim($nama) : '';
+
+                if ($nama === '') {
+                    continue;
+                }
+                if (mb_strlen($nama) > self::ITEM_MAX_LENGTH) {
+                    return [[], 'Nama item checklist maksimal ' . self::ITEM_MAX_LENGTH . ' karakter.'];
+                }
+                $items[] = $nama;
+            }
         }
 
-        if ($this->model('M_Agenda')->deleteItem($id)) {
-            $this->json(['status' => 'success', 'message' => 'Item berhasil dihapus!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal menghapus item.']);
+        return [$items, null];
     }
 
     // Validasi & normalisasi input form agenda. Mengembalikan [data, pesanError]
-    // Tanggal/waktu yang kosong disimpan sebagai NULL (bukan string kosong)
+    // Tanggal wajib; waktu mulai/selesai opsional dan yang kosong disimpan sebagai NULL
     private function validated(): array
     {
         $judul = $this->post('judul');
@@ -173,11 +174,15 @@ class Agenda extends Controller
             return [[], 'Judul agenda maksimal 100 karakter.'];
         }
 
-        if ($tanggal !== '') {
-            $d = DateTime::createFromFormat('Y-m-d', $tanggal);
-            if (!$d || $d->format('Y-m-d') !== $tanggal) {
-                return [[], 'Tanggal tidak valid.'];
-            }
+        if (mb_strlen($deskripsi) > 65535) {
+            return [[], 'Deskripsi terlalu panjang (maksimal 65.535 karakter).'];
+        }
+
+        if ($tanggal === '') {
+            return [[], 'Tanggal agenda wajib diisi!'];
+        }
+        if (!is_valid_date($tanggal)) {
+            return [[], 'Tanggal tidak valid.'];
         }
 
         foreach ([$mulai, $selesai] as $t) {
@@ -195,7 +200,7 @@ class Agenda extends Controller
         return [[
             'judul'         => $judul,
             'deskripsi'     => $deskripsi !== '' ? $deskripsi : null,
-            'tanggal'       => $tanggal !== '' ? $tanggal : null,
+            'tanggal'       => $tanggal,
             'waktu_mulai'   => $mulai !== '' ? $mulai : null,
             'waktu_selesai' => $selesai !== '' ? $selesai : null,
         ], null];

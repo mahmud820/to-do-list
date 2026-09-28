@@ -40,15 +40,10 @@
 
     var del = e.target.closest("[data-note-delete]");
     if (del) {
-      var id = del.getAttribute("data-note-delete");
-      App.confirm(
-        "Yakin ingin menghapus?",
-        "Catatan yang dihapus tidak bisa dikembalikan!",
-      ).then(function (ok) {
-        if (ok)
-          App.post(BASEURL + "/notes/delete", { id: id }).then(function (r) {
-            App.handle(r, { type: "delete" });
-          });
+      App.confirmDelete({
+        url: BASEURL + "/notes/delete",
+        id: del.getAttribute("data-note-delete"),
+        text: "Catatan yang dihapus tidak bisa dikembalikan!",
       });
     }
   });

@@ -4,33 +4,25 @@ class Tasks extends Controller
 {
     public function index()
     {
-        $q = trim($_GET['q'] ?? '');
-        $status = $_GET['status'] ?? '';
-        $prioritas = $_GET['prioritas'] ?? '';
-        $deadline = $_GET['deadline'] ?? '';
-
-        // Hanya terima nilai filter yang valid
-        if (!in_array($status, M_Tasks::STATUS, true)) {
-            $status = '';
-        }
-        if (!in_array($prioritas, M_Tasks::PRIORITAS, true)) {
-            $prioritas = '';
-        }
-        if (!in_array($deadline, M_Tasks::DEADLINE_FILTERS, true)) {
-            $deadline = '';
-        }
+        $q = $this->queryParam('q');
+        // Hanya terima nilai filter yang valid (selain itu dianggap "semua")
+        $status = $this->queryChoice('status', M_Tasks::STATUS);
+        $prioritas = $this->queryChoice('prioritas', M_Tasks::PRIORITAS);
+        $deadline = $this->queryChoice('deadline', M_Tasks::DEADLINE_FILTERS);
 
         $data['judul'] = 'Tasks';
         $data['q'] = $q;
         $data['status'] = $status;
         $data['prioritas'] = $prioritas;
         $data['deadline'] = $deadline;
-        $data['today'] = date('Y-m-d');
-        $data['tasks'] = $this->model('M_Tasks')->getAllTasks($q, $status, $prioritas, $deadline);
+        $data['today'] = today_date();
 
-        $this->view('templates/header', $data);
-        $this->view('tasks/index', $data);
-        $this->view('templates/footer');
+        $model = $this->model('M_Tasks');
+        $pager = paginate($model->countTasks($q, $status, $prioritas, $deadline), PER_PAGE_TASKS, $this->queryPage());
+        $data['pager'] = $pager;
+        $data['tasks'] = $model->getAllTasks($q, $status, $prioritas, $deadline, $pager['perPage'], $pager['offset']);
+
+        $this->page('tasks/index', $data);
     }
 
     // Tambah task baru via AJAX
@@ -40,51 +32,52 @@ class Tasks extends Controller
         [$data, $error] = $this->validated();
 
         if ($error) {
-            $this->json(['status' => 'error', 'message' => $error]);
+            $this->fail($error);
         }
 
-        if ($this->model('M_Tasks')->addTask($data)) {
-            $this->json(['status' => 'success', 'message' => 'Task berhasil ditambahkan!']);
+        // Task baru tidak boleh langsung terlambat (saat mengedit, deadline lama tetap boleh)
+        if ($data['deadline'] < today_date()) {
+            $this->fail('Deadline tidak boleh sebelum hari ini.');
         }
-        $this->json(['status' => 'error', 'message' => 'Gagal menambahkan task.']);
+
+        $this->respond(
+            $this->model('M_Tasks')->addTask($data),
+            'Task berhasil ditambahkan!',
+            'Gagal menambahkan task.'
+        );
     }
 
     // Update task via AJAX
     public function update()
     {
         $this->requirePost();
+        $id = $this->requireId('task');
         [$data, $error] = $this->validated();
-        $id = (int) $this->post('id');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID task tidak ditemukan!']);
-        }
         if ($error) {
-            $this->json(['status' => 'error', 'message' => $error]);
+            $this->fail($error);
         }
 
         $data['id'] = $id;
 
-        if ($this->model('M_Tasks')->updateTask($data)) {
-            $this->json(['status' => 'success', 'message' => 'Task berhasil diupdate!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal mengupdate task.']);
+        $this->respond(
+            $this->model('M_Tasks')->updateTask($data),
+            'Task berhasil diupdate!',
+            'Gagal mengupdate task.'
+        );
     }
 
     // Hapus task via AJAX
     public function delete()
     {
         $this->requirePost();
-        $id = (int) $this->post('id');
+        $id = $this->requireId('task');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID task tidak ditemukan!']);
-        }
-
-        if ($this->model('M_Tasks')->deleteTask($id)) {
-            $this->json(['status' => 'success', 'message' => 'Task berhasil dihapus!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal menghapus task.']);
+        $this->respond(
+            $this->model('M_Tasks')->deleteTask($id),
+            'Task berhasil dihapus!',
+            'Gagal menghapus task.'
+        );
     }
 
     // Validasi & normalisasi input form task. Mengembalikan [data, pesanError]
@@ -104,8 +97,11 @@ class Tasks extends Controller
             return [[], 'Judul task maksimal 255 karakter.'];
         }
 
-        $d = DateTime::createFromFormat('Y-m-d', $deadline);
-        if (!$d || $d->format('Y-m-d') !== $deadline) {
+        if (mb_strlen($deskripsi) > 65535) {
+            return [[], 'Deskripsi terlalu panjang (maksimal 65.535 karakter).'];
+        }
+
+        if (!is_valid_date($deadline)) {
             return [[], 'Deadline wajib diisi dengan tanggal yang valid.'];
         }
 

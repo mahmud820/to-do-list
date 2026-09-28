@@ -4,15 +4,17 @@ class Notes extends Controller
 {
     public function index()
     {
-        $q = trim($_GET['q'] ?? '');
+        $q = $this->queryParam('q');
 
         $data['judul'] = 'Notes';
         $data['q'] = $q;
-        $data['notes'] = $this->model('M_Notes')->getAllNotes($q);
 
-        $this->view('templates/header', $data);
-        $this->view('notes/index', $data);
-        $this->view('templates/footer');
+        $model = $this->model('M_Notes');
+        $pager = paginate($model->countFiltered($q), PER_PAGE_NOTES, $this->queryPage());
+        $data['pager'] = $pager;
+        $data['notes'] = $model->getAllNotes($q, $pager['perPage'], $pager['offset']);
+
+        $this->page('notes/index', $data);
     }
 
     public function add()
@@ -21,49 +23,45 @@ class Notes extends Controller
         [$data, $error] = $this->validated();
 
         if ($error) {
-            $this->json(['status' => 'error', 'message' => $error]);
+            $this->fail($error);
         }
 
-        if ($this->model('M_Notes')->addNote($data)) {
-            $this->json(['status' => 'success', 'message' => 'Catatan berhasil ditambahkan!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal menambahkan catatan.']);
+        $this->respond(
+            $this->model('M_Notes')->addNote($data),
+            'Catatan berhasil ditambahkan!',
+            'Gagal menambahkan catatan.'
+        );
     }
 
     public function update()
     {
         $this->requirePost();
+        $id = $this->requireId('catatan');
         [$data, $error] = $this->validated();
-        $id = (int) $this->post('id');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID catatan tidak ditemukan!']);
-        }
         if ($error) {
-            $this->json(['status' => 'error', 'message' => $error]);
+            $this->fail($error);
         }
 
         $data['id'] = $id;
 
-        if ($this->model('M_Notes')->updateNote($data)) {
-            $this->json(['status' => 'success', 'message' => 'Catatan berhasil diupdate!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal mengupdate catatan.']);
+        $this->respond(
+            $this->model('M_Notes')->updateNote($data),
+            'Catatan berhasil diupdate!',
+            'Gagal mengupdate catatan.'
+        );
     }
 
     public function delete()
     {
         $this->requirePost();
-        $id = (int) $this->post('id');
+        $id = $this->requireId('catatan');
 
-        if ($id <= 0) {
-            $this->json(['status' => 'error', 'message' => 'ID catatan tidak ditemukan!']);
-        }
-
-        if ($this->model('M_Notes')->deleteNote($id)) {
-            $this->json(['status' => 'success', 'message' => 'Catatan berhasil dihapus!']);
-        }
-        $this->json(['status' => 'error', 'message' => 'Gagal menghapus catatan.']);
+        $this->respond(
+            $this->model('M_Notes')->deleteNote($id),
+            'Catatan berhasil dihapus!',
+            'Gagal menghapus catatan.'
+        );
     }
 
     private function validated(): array
@@ -76,6 +74,10 @@ class Notes extends Controller
         }
         if (mb_strlen($judul) > 150) {
             return [[], 'Judul catatan maksimal 150 karakter.'];
+        }
+
+        if (mb_strlen($isi) > 65535) {
+            return [[], 'Isi catatan terlalu panjang (maksimal 65.535 karakter).'];
         }
 
         return [['judul' => $judul, 'isi' => $isi !== '' ? $isi : null], null];
