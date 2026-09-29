@@ -100,6 +100,17 @@ class M_Tasks extends Model
         return $this->db->execute();
     }
 
+    // Deadline task saat ini di database (null jika task tidak ditemukan).
+    // Dipakai untuk mengizinkan "mempertahankan" deadline lampau yang sudah ada saat edit,
+    // tanpa mengizinkan tanggal lampau BARU yang belum pernah tersimpan.
+    public function getDeadline(int $id): ?string
+    {
+        $this->db->query("SELECT deadline FROM tasks WHERE id = :id");
+        $this->db->bind('id', $id);
+        $row = $this->db->single();
+        return $row ? $row['deadline'] : null;
+    }
+
     // Update task (kolom updated_at diisi otomatis oleh database)
     public function updateTask(array $data): bool
     {

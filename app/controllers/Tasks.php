@@ -58,10 +58,20 @@ class Tasks extends Controller
             $this->fail($error);
         }
 
+        $model = $this->model('M_Tasks');
+
+        // Deadline baru boleh di masa lalu HANYA jika sama dengan deadline yang sudah
+        // tersimpan (mempertahankan task lama yang terlanjur terlambat). Tanggal lampau
+        // baru yang belum pernah tersimpan tetap ditolak, sama seperti saat menambah task.
+        $existingDeadline = $model->getDeadline($id);
+        if ($existingDeadline !== null && $data['deadline'] < today_date() && $data['deadline'] !== $existingDeadline) {
+            $this->fail('Deadline tidak boleh diubah ke tanggal yang sudah lewat.');
+        }
+
         $data['id'] = $id;
 
         $this->respond(
-            $this->model('M_Tasks')->updateTask($data),
+            $model->updateTask($data),
             'Task berhasil diupdate!',
             'Gagal mengupdate task.'
         );

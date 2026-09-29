@@ -28,9 +28,14 @@
     if (locked) setProgress(100);
   }
 
+  // Deadline task saat dibuka untuk diedit (referensi aturan: boleh dipertahankan meski
+  // sudah lewat, tapi tidak boleh diubah ke tanggal lampau lain). Kosong berarti mode tambah.
+  var originalDeadline = "";
+
   function openNew() {
     form.reset();
     el("task_id").value = "";
+    originalDeadline = "";
     el("taskModalTitle").textContent = "Tambah Task Baru";
     // Task baru tidak boleh berdeadline lampau (selaras dengan validasi server)
     el("task_deadline").min = App.today();
@@ -43,12 +48,14 @@
   function openEdit(t) {
     form.reset();
     el("task_id").value = t.id;
+    originalDeadline = t.deadline;
     el("taskModalTitle").textContent = "Edit Task";
     el("task_judul").value = t.judul || "";
     el("task_deskripsi").value = t.deskripsi || "";
     el("task_status").value = t.status;
     el("task_prioritas").value = t.prioritas;
-    // Saat edit, deadline lama yang sudah lewat tetap boleh dipertahankan
+    // Saat edit, deadline lama yang sudah lewat tetap boleh dipertahankan apa adanya;
+    // tapi kalau diubah, tanggal barunya tetap tidak boleh di masa lalu (dicek saat submit).
     el("task_deadline").removeAttribute("min");
     el("task_deadline").value = t.deadline;
     setProgress(t.progress);
@@ -92,7 +99,17 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
+
+    var deadline = el("task_deadline").value;
     var isEdit = el("task_id").value !== "";
+
+    // Selaras dengan validasi server: deadline tidak boleh di masa lalu, kecuali
+    // saat edit dan nilainya memang tidak diubah dari deadline lama yang sudah lewat.
+    if (deadline < App.today() && deadline !== originalDeadline) {
+      App.toast("Deadline tidak boleh diisi tanggal yang sudah lewat.", "error");
+      return;
+    }
+
     App.submitForm(form, BASEURL + (isEdit ? "/tasks/update" : "/tasks/add"));
   });
 
